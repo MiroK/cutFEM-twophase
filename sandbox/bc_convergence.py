@@ -31,10 +31,10 @@ import numpy as np
 
 # Problem data ----------------------------------------------------------------
 k0 = Constant(1.0)
-k2 = Constant(100.0)
+k2 = Constant(1.5)
 f = Expression('pi*pi*sin(pi*x[0])', degree=8)
-u_exact = Expression('x[0]<=0 ? sin(pi*x[0])/k0 : sin(pi*x[0])/k2',
-                     k0=k0, k2=k2)
+u_exact = Expression('x[0] < DOLFIN_EPS? sin(pi*x[0])/k0 : sin(pi*x[0])/k2',
+                     k0=k0, k2=k2, degree=8)
 
 # Domain definitions ----------------------------------------------------------
 
@@ -101,7 +101,7 @@ def weak_sym(mesh, material_domains, boundaries):
     ds = Measure('ds')[boundaries]
     n = FacetNormal(mesh)
     h = MaxFacetEdgeLength(mesh)
-    gamma_h = 4
+    gamma_h = Constant(100)
     # Nitsche terms
     a += - inner(k0*dot(grad(u), n), v)*ds(0)\
         - inner(k0*dot(grad(v), n), u)*ds(0)\
@@ -173,51 +173,51 @@ def weak_skew(mesh, material_domains, boundaries):
 band = AutoSubDomain(lambda x: -0.2 < x[0] < 0.2)
 
 # Choose the solver <-----------------------------------------
-solver = strong
+for name, solver in {'strong': strong, 'weak_sym': weak_sym}.items():
+    # Gather data
+    data = defaultdict(list)
+    i_list = range(3, 8)
+    for i in i_list:
+        N = 2**i
+        mesh, material_domains, boundaries = create_domain(N)
+        uh = solver(mesh, material_domains, boundaries)
 
-# Gather data
-data = defaultdict(list)
-i_list = range(3, 8)
-for i in i_list:
-    N = 2**i
-    mesh, material_domains, boundaries = create_domain(N)
-    uh = solver(mesh, material_domains, boundaries)
+        errorL2 = errornorm(u_exact, uh, 'L2')
+        errorH10 = errornorm(u_exact, uh, 'H10')
 
-    errorL2 = errornorm(u_exact, uh, 'L2')
-    errorH10 = errornorm(u_exact, uh, 'H10')
+        cell_f = CellFunction('size_t', mesh, 1)
+        band.mark(cell_f, 0)
+        submesh = SubMesh(mesh, cell_f, 1)
 
-    cell_f = CellFunction('size_t', mesh, 1)
-    band.mark(cell_f, 0)
-    submesh = SubMesh(mesh, cell_f, 1)
+        errorL2_sub = errornorm(u_exact, uh, 'L2', mesh=submesh)
+        errorH10_sub = errornorm(u_exact, uh, 'H10', mesh=submesh)
 
-    errorL2_sub = errornorm(u_exact, uh, 'L2', mesh=submesh)
-    errorH10_sub = errornorm(u_exact, uh, 'H10', mesh=submesh)
+        data['h'].append(mesh.hmax())
+        data['L2'].append(errorL2)
+        data['H10'].append(errorH10)
+        data['L2_sub'].append(errorL2_sub)
+        data['H10_sub'].append(errorH10_sub)
 
-    data['h'].append(mesh.hmax())
-    data['L2'].append(errorL2)
-    data['H10'].append(errorH10)
-    data['L2_sub'].append(errorL2_sub)
-    data['H10_sub'].append(errorH10_sub)
+    # Plot error on the last mesh as DG0 function
+    Ve = FunctionSpace(mesh, 'DG', 4)
+    u = interpolate(u_exact, Ve)
+    u.vector().axpy(-1, interpolate(uh, Ve).vector())
 
-# Compute rates
-for i in range(1, len(i_list)):
-    h, h_ = data['h'][i], data['h'][i-1]
-    norms = []
-    for norm in ['H10', 'H10_sub', 'L2', 'L2_sub']:
-        e, e_ = data[norm][i], data[norm][i-1]
-        rate = ln(e/e_)/ln(h/h_)
-        norms.append('='.join([norm, '%.2f' % rate]))
-    print '%.4E' % h, ' '.join(norms)
+    E = FunctionSpace(mesh, 'DG', 0)
+    e = Function(E)
+    dofs_x = E.dofmap().tabulate_all_coordinates(mesh).reshape((E.dim(), 2))
+    e.vector().set_local(np.array([abs(u(dof_x)) for dof_x in dofs_x]))
+    plot(e, interactive=True)
 
-# With k0=k1 the rates are same for all the solver
-# Once discontinuity is present, solver with strong bcs yields:
-#  1.8856E-01 H10=0.58 H10_sub=0.98 L2=1.60 L2_sub=1.98
-#  9.1240E-02 H10=0.55 H10_sub=1.01 L2=1.56 L2_sub=2.01
-#  4.4896E-02 H10=0.53 H10_sub=1.00 L2=1.54 L2_sub=2.00
-#  2.2271E-02 H10=0.51 H10_sub=1.01 L2=1.52 L2_sub=2.01
 
-# While Nitsche symmetric solver yields:
-#  1.8856E-01 H10=0.50 H10_sub=0.90 L2=0.84 L2_sub=0.49
-#  9.1240E-02 H10=0.51 H10_sub=1.01 L2=0.92 L2_sub=1.12
-#  4.4896E-02 H10=0.51 H10_sub=1.00 L2=0.96 L2_sub=0.97
-#  2.2271E-02 H10=0.50 H10_sub=1.01 L2=0.98 L2_sub=1.03
+    # Compute rates
+    print '-'*79
+    print '\t\t\t', name
+    for i in range(1, len(i_list)):
+        h, h_ = data['h'][i], data['h'][i-1]
+        norms = []
+        for norm in ['H10', 'H10_sub', 'L2', 'L2_sub']:
+            e, e_ = data[norm][i], data[norm][i-1]
+            rate = ln(e/e_)/ln(h/h_)
+            norms.append('='.join([norm, '%.2f' % rate]))
+        print '%.4E' % h, ' '.join(norms)
