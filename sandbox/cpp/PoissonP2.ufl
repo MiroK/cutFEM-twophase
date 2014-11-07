@@ -35,28 +35,39 @@ L_weak_skew += inner(dot(grad(v), n), g)*ds(1)
 
 # Belgian formulation with cutcells
 # Custom measures 
+k0 = Constant(triangle)
+k2 = Constant(triangle)
+
 dQ = dc(0, metadata={"num_cells": 1})
 # 0 cells are completely inside
 # 2 cells are completely outside
 
 # Standard cells, standard terms
-a_belg  = inner(grad(u), grad(v))*dx(0) 
-a_belg += inner(grad(u), grad(v))*dx(2) 
+a_belg  = inner(k0*grad(u), grad(v))*dx(0) 
+a_belg += inner(k2*grad(u), grad(v))*dx(2) 
 
 # Add Nitsche terms for 0 domain cells
-a_belg += - inner(dot(grad(u), n), v)*ds(1)\
-          - inner(dot(grad(v), n), u)*ds(1)\
-          + gamma_h/h*inner(u, v)*ds(1)
+a_belg += - inner(k0*dot(grad(u), n), v)*ds(1)\
+          - inner(k0*dot(grad(v), n), u)*ds(1)\
+          + k0*gamma_h/h*inner(u, v)*ds(1)
+
+a_belg += - inner(k2*dot(grad(u), n), v)*ds(3)\
+          - inner(k2*dot(grad(v), n), u)*ds(3)\
+          + k2*gamma_h/h*inner(u, v)*ds(3)
 
 # Cut elements, standard terms 
-a_belg += inner(grad(u), grad(v))*dQ(0) 
-a_belg += inner(grad(u), grad(v))*dQ(2)
+a_belg += inner(k0*grad(u), grad(v))*dQ(0) 
+a_belg += inner(k2*grad(u), grad(v))*dQ(2)
 
 # Rhs standard terms
 L_belg = f*v*dx("everywhere")
 
 # Nitsche terms for L in 0       
-L_belg += - inner(dot(grad(v), n), g)*ds(1) + gamma_h/h*inner(g, v)*ds(1)
+L_belg += - inner(k0*dot(grad(v), n), g)*ds(1)\
+          + k0*gamma_h/h*inner(g, v)*ds(1)
+
+L_belg += - inner(k2*dot(grad(v), n), g)*ds(3)\
+          + k2*gamma_h/h*inner(g, v)*ds(3)
 
 # ---------------------- ALL FORMS -------------------------------------
 

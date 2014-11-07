@@ -15,7 +15,8 @@ class LevelSet : public Expression
 {
   void eval(Array<double>& values, const Array<double>& x) const
   {
-    values[0] = x[0] - 0.5;
+    //values[0] = x[0]; // vertical line
+    values[0] = (x[1]-x[0])/sqrt(2); // slanted line
   }
 };
 
@@ -29,7 +30,7 @@ public:
           const FacetFunction<size_t>& boundaries,
           const Expression& f,
           const Expression& g,
-          const std::size_t order) const;
+          const std::size_t order=2) const;
 };
 
 // ----------------------------------------------------------------------------
@@ -41,288 +42,103 @@ BelgianSolver::solve(const std::shared_ptr<Mesh> mesh,
                      const Expression& g,
                      const std::size_t order) const
 {
-  if(order == 1)
-  {
-    Constant gamma_h(10);
-    std::size_t quad_order = 1;
+  Constant gamma_h(20);
+  Constant k0(1), k2(10);
+  std::size_t quad_order = 2;
 
-    // Actual solver
-    CompositeMesh composite_mesh;
-    composite_mesh.add(mesh);
-    // Empty functions for now.
-    composite_mesh.compute_collisions();
-    composite_mesh.compute_intersections();
+  // Actual solver
+  CompositeMesh composite_mesh;
+  composite_mesh.add(mesh);
+  // Empty functions for now.
+  composite_mesh.compute_collisions();
+  composite_mesh.compute_intersections();
 
-    // Compute level set discretization
-    std::shared_ptr<Expression> phi(new LevelSet);
-    MeshCutter mesh_cutter(mesh, phi);
-    mesh_cutter.compute_cut_mesh_topology();
-    mesh_cutter.compute_cut_mesh_geometry();
+  // Compute level set discretization
+  std::shared_ptr<Expression> phi(new LevelSet);
+  MeshCutter mesh_cutter(mesh, phi);
+  mesh_cutter.compute_cut_mesh_topology();
+  mesh_cutter.compute_cut_mesh_geometry();
 
-    // Create function spaces on each mesh and composite function space
-    PoissonP1::FunctionSpace V0(mesh);
+  // Create function spaces on each mesh and composite function space
+  PoissonP2::FunctionSpace V0(mesh);
 
-    // Create a simple composite function space consisting of single
-    // a function space.
-    CompositeFunctionSpace V(composite_mesh);
-    V.add(V0);
-    V.build();
+  // Create a simple composite function space consisting of single
+  // a function space.
+  CompositeFunctionSpace V(composite_mesh);
+  V.add(V0);
+  V.build();
 
-    // Create empty CompositeForm
-    CompositeForm a(V, V);
+  // Create empty CompositeForm
+  CompositeForm a(V, V);
 
-    // Create standard bilinear forms on mesh 0
-    PoissonP1::Form_a_belg a0(V0, V0);
-    a0.set_cell_domains(mesh_cutter.domain_marker());
-    a0.ds = boundaries;
-    a0.gamma_h = gamma_h;
+  // Create standard bilinear forms on mesh 0
+  PoissonP2::Form_a_belg a0(V0, V0);
+  a0.set_cell_domains(mesh_cutter.domain_marker());
+  a0.ds = boundaries;
+  a0.gamma_h = gamma_h;
+  a0.k0 = k0;
+  a0.k2 = k2;
 
-    // Add them as CutForm to CompositeForm
-    a.add(std::shared_ptr<CutForm>(new CutForm(a0)));
+  // Add them as CutForm to CompositeForm
+  a.add(std::shared_ptr<CutForm>(new CutForm(a0)));
 
-    // Extract inner cut cells.
-    auto cut_cells_0 = mesh_cutter.cut_cells()[0];
-    // Extract inner cut cells. Note we have 2 vs 1.
-    auto cut_cells_2 = mesh_cutter.cut_cells()[1];
+  // Extract inner cut cells.
+  auto cut_cells_0 = mesh_cutter.cut_cells()[0];
+  // Extract inner cut cells. Note we have 2 vs 1.
+  auto cut_cells_2 = mesh_cutter.cut_cells()[1];
 
-    // All cut meshes have the one and only mesh 0 as parent
-    std::vector<std::size_t> parent_mesh_ids;
-    parent_mesh_ids.push_back(0);
+  // All cut meshes have the one and only mesh 0 as parent
+  std::vector<std::size_t> parent_mesh_ids;
+  parent_mesh_ids.push_back(0);
 
-    // Define quadrature rules for the cut meshes
-    std::shared_ptr<Quadrature> quadrature_cut_cells_0
-    (new Quadrature(cut_cells_0->type().cell_type(),
-        cut_cells_0->geometry().dim(),
-        quad_order));
+  // Define quadrature rules for the cut meshes
+  std::shared_ptr<Quadrature> quadrature_cut_cells_0
+  (new Quadrature(cut_cells_0->type().cell_type(),
+      cut_cells_0->geometry().dim(),
+      quad_order));
 
-    std::shared_ptr<Quadrature> quadrature_cut_cells_2
-    (new Quadrature(cut_cells_2->type().cell_type(),
-        cut_cells_2->geometry().dim(),
-        quad_order));
+  std::shared_ptr<Quadrature> quadrature_cut_cells_2
+  (new Quadrature(cut_cells_2->type().cell_type(),
+      cut_cells_2->geometry().dim(),
+      quad_order));
 
-    a.cut_form(0)->set_quadrature(0, quadrature_cut_cells_0);
-    a.cut_form(0)->set_cut_mesh(0, cut_cells_0);
-    a.cut_form(0)->set_parent_mesh_ids(0, parent_mesh_ids);
+  a.cut_form(0)->set_quadrature(0, quadrature_cut_cells_0);
+  a.cut_form(0)->set_cut_mesh(0, cut_cells_0);
+  a.cut_form(0)->set_parent_mesh_ids(0, parent_mesh_ids);
 
-    //Provide same information for domain 2 in form 0
-    a.cut_form(0)->set_quadrature(2, quadrature_cut_cells_2);
-    a.cut_form(0)->set_cut_mesh(2, cut_cells_2);
-    a.cut_form(0)->set_parent_mesh_ids(2, parent_mesh_ids);
+  //Provide same information for domain 2 in form 0
+  a.cut_form(0)->set_quadrature(2, quadrature_cut_cells_2);
+  a.cut_form(0)->set_cut_mesh(2, cut_cells_2);
+  a.cut_form(0)->set_parent_mesh_ids(2, parent_mesh_ids);
 
-    // Create forms for rhs
-    CompositeForm L(V);
-    PoissonP1::Form_L_belg L0(V0);
-    L0.f = f;
-    L0.g = g;
-    L0.ds = boundaries;
-    L0.gamma_h = gamma_h;
-    L.add(std::shared_ptr<CutForm>(new CutForm(L0)));
+  // Create forms for rhs
+  CompositeForm L(V);
+  PoissonP2::Form_L_belg L0(V0);
+  L0.f = f;
+  L0.g = g;
+  L0.ds = boundaries;
+  L0.gamma_h = gamma_h;
+  L0.k0 = k0;
+  L0.k2 = k2;
+  L.add(std::shared_ptr<CutForm>(new CutForm(L0)));
 
-    // Assemble system
-    Matrix A;
-    Vector b;
+  // Assemble system
+  Matrix A;
+  Vector b;
 
-    CompositeFormAssembler assembler;
-    assembler.assemble(A, a);
-    assembler.assemble(b, L);
+  CompositeFormAssembler assembler;
+  assembler.assemble(A, a);
+  assembler.assemble(b, L);
 
-    // Solve
-    CompositeFunction uh(V);
-    PETScLUSolver solver;
-    solver.solve(A, *uh.vector(), b);
+  // Solve
+  CompositeFunction uh(V);
+  PETScLUSolver solver;
+  solver.solve(A, *uh.vector(), b);
 
-    Function solution(uh.part(0));
+  Function solution(uh.part(0));
+  plot(solution);
 
-    return error_norm(g, solution);
-  }
-  if(order == 2)
-  {
-    Constant gamma_h(20);
-    std::size_t quad_order = 2;
-
-    // Actual solver
-    CompositeMesh composite_mesh;
-    composite_mesh.add(mesh);
-    // Empty functions for now.
-    composite_mesh.compute_collisions();
-    composite_mesh.compute_intersections();
-
-    // Compute level set discretization
-    std::shared_ptr<Expression> phi(new LevelSet);
-    MeshCutter mesh_cutter(mesh, phi);
-    mesh_cutter.compute_cut_mesh_topology();
-    mesh_cutter.compute_cut_mesh_geometry();
-
-    // Create function spaces on each mesh and composite function space
-    PoissonP2::FunctionSpace V0(mesh);
-
-    // Create a simple composite function space consisting of single
-    // a function space.
-    CompositeFunctionSpace V(composite_mesh);
-    V.add(V0);
-    V.build();
-
-    // Create empty CompositeForm
-    CompositeForm a(V, V);
-
-    // Create standard bilinear forms on mesh 0
-    PoissonP2::Form_a_belg a0(V0, V0);
-    a0.set_cell_domains(mesh_cutter.domain_marker());
-    a0.ds = boundaries;
-    a0.gamma_h = gamma_h;
-
-    // Add them as CutForm to CompositeForm
-    a.add(std::shared_ptr<CutForm>(new CutForm(a0)));
-
-    // Extract inner cut cells.
-    auto cut_cells_0 = mesh_cutter.cut_cells()[0];
-    // Extract inner cut cells. Note we have 2 vs 1.
-    auto cut_cells_2 = mesh_cutter.cut_cells()[1];
-
-    // All cut meshes have the one and only mesh 0 as parent
-    std::vector<std::size_t> parent_mesh_ids;
-    parent_mesh_ids.push_back(0);
-
-    // Define quadrature rules for the cut meshes
-    std::shared_ptr<Quadrature> quadrature_cut_cells_0
-    (new Quadrature(cut_cells_0->type().cell_type(),
-        cut_cells_0->geometry().dim(),
-        quad_order));
-
-    std::shared_ptr<Quadrature> quadrature_cut_cells_2
-    (new Quadrature(cut_cells_2->type().cell_type(),
-        cut_cells_2->geometry().dim(),
-        quad_order));
-
-    a.cut_form(0)->set_quadrature(0, quadrature_cut_cells_0);
-    a.cut_form(0)->set_cut_mesh(0, cut_cells_0);
-    a.cut_form(0)->set_parent_mesh_ids(0, parent_mesh_ids);
-
-    //Provide same information for domain 2 in form 0
-    a.cut_form(0)->set_quadrature(2, quadrature_cut_cells_2);
-    a.cut_form(0)->set_cut_mesh(2, cut_cells_2);
-    a.cut_form(0)->set_parent_mesh_ids(2, parent_mesh_ids);
-
-    // Create forms for rhs
-    CompositeForm L(V);
-    PoissonP2::Form_L_belg L0(V0);
-    L0.f = f;
-    L0.g = g;
-    L0.ds = boundaries;
-    L0.gamma_h = gamma_h;
-    L.add(std::shared_ptr<CutForm>(new CutForm(L0)));
-
-    // Assemble system
-    Matrix A;
-    Vector b;
-
-    CompositeFormAssembler assembler;
-    assembler.assemble(A, a);
-    assembler.assemble(b, L);
-
-    // Solve
-    CompositeFunction uh(V);
-    PETScLUSolver solver;
-    solver.solve(A, *uh.vector(), b);
-
-    Function solution(uh.part(0));
-
-    return error_norm(g, solution);
-  }
-  if(order == 3)
-  {
-    Constant gamma_h(40);
-    std::size_t quad_order = 4;
-
-    // Actual solver
-    CompositeMesh composite_mesh;
-    composite_mesh.add(mesh);
-    // Empty functions for now.
-    composite_mesh.compute_collisions();
-    composite_mesh.compute_intersections();
-
-    // Compute level set discretization
-    std::shared_ptr<Expression> phi(new LevelSet);
-    MeshCutter mesh_cutter(mesh, phi);
-    mesh_cutter.compute_cut_mesh_topology();
-    mesh_cutter.compute_cut_mesh_geometry();
-
-    // Create function spaces on each mesh and composite function space
-    PoissonP3::FunctionSpace V0(mesh);
-
-    // Create a simple composite function space consisting of single
-    // a function space.
-    CompositeFunctionSpace V(composite_mesh);
-    V.add(V0);
-    V.build();
-
-    // Create empty CompositeForm
-    CompositeForm a(V, V);
-
-    // Create standard bilinear forms on mesh 0
-    PoissonP3::Form_a_belg a0(V0, V0);
-    a0.set_cell_domains(mesh_cutter.domain_marker());
-    a0.ds = boundaries;
-    a0.gamma_h = gamma_h;
-
-    // Add them as CutForm to CompositeForm
-    a.add(std::shared_ptr<CutForm>(new CutForm(a0)));
-
-    // Extract inner cut cells.
-    auto cut_cells_0 = mesh_cutter.cut_cells()[0];
-    // Extract inner cut cells. Note we have 2 vs 1.
-    auto cut_cells_2 = mesh_cutter.cut_cells()[1];
-
-    // All cut meshes have the one and only mesh 0 as parent
-    std::vector<std::size_t> parent_mesh_ids;
-    parent_mesh_ids.push_back(0);
-
-    // Define quadrature rules for the cut meshes
-    std::shared_ptr<Quadrature> quadrature_cut_cells_0
-    (new Quadrature(cut_cells_0->type().cell_type(),
-        cut_cells_0->geometry().dim(),
-        quad_order));
-
-    std::shared_ptr<Quadrature> quadrature_cut_cells_2
-    (new Quadrature(cut_cells_2->type().cell_type(),
-        cut_cells_2->geometry().dim(),
-        quad_order));
-
-    a.cut_form(0)->set_quadrature(0, quadrature_cut_cells_0);
-    a.cut_form(0)->set_cut_mesh(0, cut_cells_0);
-    a.cut_form(0)->set_parent_mesh_ids(0, parent_mesh_ids);
-
-    //Provide same information for domain 2 in form 0
-    a.cut_form(0)->set_quadrature(2, quadrature_cut_cells_2);
-    a.cut_form(0)->set_cut_mesh(2, cut_cells_2);
-    a.cut_form(0)->set_parent_mesh_ids(2, parent_mesh_ids);
-
-    // Create forms for rhs
-    CompositeForm L(V);
-    PoissonP3::Form_L_belg L0(V0);
-    L0.f = f;
-    L0.g = g;
-    L0.ds = boundaries;
-    L0.gamma_h = gamma_h;
-    L.add(std::shared_ptr<CutForm>(new CutForm(L0)));
-
-    // Assemble system
-    Matrix A;
-    Vector b;
-
-    CompositeFormAssembler assembler;
-    assembler.assemble(A, a);
-    assembler.assemble(b, L);
-
-    // Solve
-    CompositeFunction uh(V);
-    PETScLUSolver solver;
-    solver.solve(A, *uh.vector(), b);
-
-    Function solution(uh.part(0));
-
-    return error_norm(g, solution);
-  }
+  return error_norm(g, solution);
 }
 
 #endif // __BELGIAN_SOLVER_H
