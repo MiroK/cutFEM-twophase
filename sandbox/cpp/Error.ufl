@@ -1,0 +1,9 @@
+Ve = FiniteElement('Discontinuous Lagrange', triangle, 6)
+
+u = Coefficient(Ve)
+uh = Coefficient(Ve)
+
+l2_norm = inner(u-uh, u-uh)*dx
+h10_norm = inner(grad(u-uh), grad(u-uh))*dx
+
+forms = [l2_norm, h10_norm]

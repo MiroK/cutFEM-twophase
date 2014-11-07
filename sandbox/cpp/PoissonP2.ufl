@@ -1,0 +1,66 @@
+V = FiniteElement('Lagrange', triangle, 2)
+F = FiniteElement('Lagrange', triangle, 8)
+f = Coefficient(F)
+g = Coefficient(F)
+
+u = TrialFunction(V)
+v = TestFunction(V)
+
+# Formulation with strong bcs
+a_strong = inner(grad(u), grad(v))*dx
+L_strong = inner(f, v)*dx
+
+# Formulation with bcs set by symmetric Nitsche method
+n = FacetNormal(triangle)
+h = MaxFacetEdgeLength(triangle)
+gamma_h = Constant(triangle)
+
+a_weak_sym = inner(grad(u), grad(v))*dx
+a_weak_sym += - inner(dot(grad(u), n), v)*ds(1)\
+              - inner(dot(grad(v), n), u)*ds(1)\
+              + gamma_h/h*inner(u, v)*ds(1)
+
+L_weak_sym = inner(f, v)*dx('everywhere')
+L_weak_sym += - inner(dot(grad(v), n), g)*ds(1) +\
+              gamma_h/h*inner(g, v)*ds(1)
+
+
+# Formulation with bcs set by skew-symmetric Nitsche method
+a_weak_skew = inner(grad(u), grad(v))*dx
+a_weak_skew += - inner(dot(grad(u), n), v)*ds(1)\
+              + inner(dot(grad(v), n), u)*ds(1)
+
+L_weak_skew = inner(f, v)*dx('everywhere')
+L_weak_skew += inner(dot(grad(v), n), g)*ds(1)
+
+# Belgian formulation with cutcells
+# Custom measures 
+dQ = dc(0, metadata={"num_cells": 1})
+# 0 cells are completely inside
+# 2 cells are completely outside
+
+# Standard cells, standard terms
+a_belg  = inner(grad(u), grad(v))*dx(0) 
+a_belg += inner(grad(u), grad(v))*dx(2) 
+
+# Add Nitsche terms for 0 domain cells
+a_belg += - inner(dot(grad(u), n), v)*ds(1)\
+          - inner(dot(grad(v), n), u)*ds(1)\
+          + gamma_h/h*inner(u, v)*ds(1)
+
+# Cut elements, standard terms 
+a_belg += inner(grad(u), grad(v))*dQ(0) 
+a_belg += inner(grad(u), grad(v))*dQ(2)
+
+# Rhs standard terms
+L_belg = f*v*dx("everywhere")
+
+# Nitsche terms for L in 0       
+L_belg += - inner(dot(grad(v), n), g)*ds(1) + gamma_h/h*inner(g, v)*ds(1)
+
+# ---------------------- ALL FORMS -------------------------------------
+
+forms = [a_strong, L_strong,\
+	 a_weak_sym, L_weak_sym,\
+	 a_weak_skew, L_weak_skew,\
+   a_belg, L_belg]
