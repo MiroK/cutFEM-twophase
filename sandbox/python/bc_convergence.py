@@ -300,3 +300,6 @@ for name, solver in {'strong': strong,
             norms.append('='.join([norm, '%.2f' % rate]))
         print '%.4E' % h, ' '.join(norms)
     # interactive()
+
+# The facet functions must be defined carefully! Seems like tag for subdomain
+# must be unique and not equal to interior facets. Still strange
