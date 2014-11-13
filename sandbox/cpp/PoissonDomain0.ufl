@@ -1,0 +1,42 @@
+# This is form for the low contrast, inner domain marked with 0.
+
+cell = triangle
+h = 2*Circumradius(cell)
+n = FacetNormal(cell)
+
+V = FiniteElement("Lagrange", cell, 1)
+F = FiniteElement("CG", cell, 8)
+
+u = TrialFunction(V)
+v = TestFunction(V)
+f = Coefficient(F)
+g = Coefficient(F)
+
+beta = 10
+gamma = 30
+#k0 = Constant(cell)
+k0 = 1
+
+# Custom measures 
+dxq = dc(0, metadata={"num_cells": 1})
+
+# Form on standard cells
+# 0 cells are completely inside
+a  = k0*inner(grad(u), grad(v))*dx(0)
+# cut cells inner domain
+a += k0*inner(grad(u), grad(v))*dxq
+
+# Stabilization forms on standard facets F
+a += k0*avg(beta)*avg(h)*dot(jump(grad(u), n), jump(grad(v), n))*dS(1)
+
+# Nitsche boundary term for a
+a += - inner(k0*dot(grad(u), n), v)*ds(1)\
+     - inner(k0*dot(grad(v), n), u)*ds(1)\
+     + k0*gamma/h*inner(u, v)*ds(1)
+
+L  = f*v*dx(0)
+L += f*v*dxq
+
+# Nitsche boundary term for L
+L += - inner(k0*dot(grad(v), n), g)*ds(1)\
+      + k0*gamma/h*inner(g, v)*ds(1)

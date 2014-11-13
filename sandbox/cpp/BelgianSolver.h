@@ -136,7 +136,6 @@ BelgianSolver::solve(const std::shared_ptr<Mesh> mesh,
   solver.solve(A, *uh.vector(), b);
 
   Function solution(uh.part(0));
-  plot(solution);
 
   return error_norm(g, solution);
 }

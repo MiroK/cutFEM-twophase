@@ -1,0 +1,14 @@
+cell = triangle
+
+V = FiniteElement('Lagrange', cell, 5)
+v = TestFunction(V)
+e = Coefficient(V)
+
+dxq = dc(0, metadata={'num_cells': 1})
+
+# Completely inside + whole of intersected cells
+L_l2 = inner(e, v)*dx(0)# + inner(e, v)*dx(1)
+L_h10 = inner(grad(e), grad(v))*dx(0)# + inner(grad(e), grad(v))*dx(1)
+
+forms = [L_l2, L_h10]
+

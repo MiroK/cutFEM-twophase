@@ -1,0 +1,32 @@
+cell = triangle
+h = 2*Circumradius(cell)
+n = FacetNormal(cell)
+N = VectorElement("DG", cell, 0)
+n_K = Coefficient(N)
+
+V = FiniteElement("Lagrange", cell, 1)
+
+u = TrialFunction(V)
+v = TestFunction(V)
+
+gamma = 100
+
+# Custom measure
+dsq = dc(0, metadata={"num_cells": 2})
+
+# Diffusifity
+k0 = 1
+k1 = 10
+
+# Define harmonic weights
+w = 2*k0*k1/(k0 + k1)
+
+# cut cells on interface are only treated in this form
+# N.B. Don't use jump(u, n_K) if you define a normals
+# yourself by providing some coefficient since
+# jump(u,n) translates to u("+")*n("+") + u("-")*n("-")
+# Assuming that the normal switches the sign (which it
+# doesn't it)
+a  = - w*dot(avg(dot(grad(u), n_K)), jump(v))*dsq
+a += - w*dot(avg(dot(grad(v), n_K)), jump(u))*dsq
+a += w*gamma/avg(h)*jump(u)*jump(v)*dsq
