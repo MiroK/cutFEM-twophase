@@ -6,9 +6,9 @@ e = Coefficient(V)
 
 dxq = dc(0, metadata={'num_cells': 1})
 
-# Completely outside + whole of cut cells
-L_l2 = inner(e, v)*dx(2) + inner(e, v)*dx(1)
-L_h10 = inner(grad(e), grad(v))*dx(2) + inner(grad(e), grad(v))*dx(1)
+# Completely inside + cut inside
+L_l2 = inner(e, v)*dx(0) + inner(e, v)*dxq
+L_h10 = inner(grad(e), grad(v))*dx(0) + inner(grad(e), grad(v))*dxq
 
 forms = [L_l2, L_h10]
 

@@ -69,7 +69,7 @@ int main()
   {
     std::cout << solver.first << std::endl;
     double h10_, l2_, h_;
-    for(std::size_t i = 3; i < 4; i++)
+    for(std::size_t i = 3; i < 9; i++)
     {
       std::size_t N = pow(2, i);
       std::shared_ptr<Mesh> mesh(new RectangleMesh(-1, -1, 1, 1, N-1, N));

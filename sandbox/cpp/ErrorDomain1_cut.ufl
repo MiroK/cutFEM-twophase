@@ -1,0 +1,14 @@
+cell = triangle
+
+V = FiniteElement('Lagrange', cell, 5)
+v = TestFunction(V)
+e = Coefficient(V)
+
+dxq = dc(2, metadata={"num_cells": 1})
+
+# Completely outside + cut outside
+L_l2 = inner(e, v)*dx(2) + inner(e, v)*dxq
+L_h10 = inner(grad(e), grad(v))*dx(2) + inner(grad(e), grad(v))*dxq
+
+forms = [L_l2, L_h10]
+

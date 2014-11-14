@@ -1,0 +1,13 @@
+cell = triangle
+
+V = VectorElement("CG", cell, 1)
+F = FiniteElement("CG", cell, 2)
+u = TrialFunction(V)
+v = TestFunction(V)
+
+ls = Coefficient(F)
+
+# Forms for standard cells
+norm = sqrt(dot(grad(ls),grad(ls)))
+a = norm*dot(u,v)*dx
+L = dot(grad(ls),v)*dx
